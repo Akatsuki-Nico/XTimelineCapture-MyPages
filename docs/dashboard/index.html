@@ -445,34 +445,25 @@ ${item.text}
 ・重要なリンクやツール名、ハッシュタグは残してください。`;
         }
 
-        function buildAiTargets(item) {
-            const prompt = buildPrompt(item);
+        function buildAiUrl(aiKey, prompt) {
             const encoded = encodeURIComponent(prompt);
+            if (aiKey === "claude") return `https://claude.ai/new?q=${encoded}`;
+            if (aiKey === "chatgpt") return `https://chatgpt.com/?q=${encoded}`;
+            if (aiKey === "gemini") return `https://gemini.google.com/app?prompt=${encoded}`;
+            if (aiKey === "grok") return `https://grok.com/?q=${encoded}`;
+            if (aiKey === "aistudio") return `https://aistudio.google.com/prompts/new_chat?prompt=${encoded}`;
+            return `https://www.google.com/search?q=${encoded}`;
+        }
+
+        function buildAiUrls(item) {
+            const prompt = buildPrompt(item);
             return {
-                claude: {
-                    web: `https://claude.ai/new?q=${encoded}`,
-                    app: "claude://",
-                },
-                chatgpt: {
-                    web: `https://chatgpt.com/?q=${encoded}`,
-                    app: "chatgpt://",
-                },
-                gemini: {
-                    web: `https://gemini.google.com/app?prompt=${encoded}`,
-                    app: "gemini://",
-                },
-                grok: {
-                    web: `https://grok.com/?q=${encoded}`,
-                    app: "grok://",
-                },
-                aistudio: {
-                    web: `https://aistudio.google.com/prompts/new_chat?prompt=${encoded}`,
-                    app: "",
-                },
-                google: {
-                    web: `https://www.google.com/search?q=${encoded}`,
-                    app: `google://search?q=${encoded}`,
-                },
+                claude: buildAiUrl("claude", prompt),
+                chatgpt: buildAiUrl("chatgpt", prompt),
+                gemini: buildAiUrl("gemini", prompt),
+                grok: buildAiUrl("grok", prompt),
+                aistudio: buildAiUrl("aistudio", prompt),
+                google: buildAiUrl("google", prompt),
             };
         }
 
@@ -485,67 +476,6 @@ ${item.text}
             }
             return fallbackCopyTextToClipboard(prompt);
         }
-
-        function isLikelyMobileDevice() {
-            const userAgent = String(navigator.userAgent || "").toLowerCase();
-            return /iphone|ipad|ipod|android/.test(userAgent);
-        }
-
-        function openExternalUrl(url) {
-            const openedWindow = window.open(url, "_blank", "noopener,noreferrer");
-            if (!openedWindow) {
-                window.location.href = url;
-            }
-        }
-
-        function openAppWithFallback(appUrl, webUrl) {
-            if (!appUrl) {
-                openExternalUrl(webUrl);
-                return;
-            }
-
-            const fallbackTimer = setTimeout(() => {
-                if (document.visibilityState === "visible") {
-                    openExternalUrl(webUrl);
-                }
-            }, 900);
-
-            document.addEventListener("visibilitychange", () => {
-                if (document.visibilityState === "hidden") {
-                    clearTimeout(fallbackTimer);
-                }
-            }, { once: true });
-
-            window.location.href = appUrl;
-        }
-
-        window.openAiFor = (event, index, serviceKey) => {
-            if (event) {
-                event.preventDefault();
-            }
-            const item = rawData[index];
-            if (!item) {
-                return false;
-            }
-
-            const prompt = buildPrompt(item);
-            copyPrompt(prompt).then((copied) => {
-                showToast(copied ? "プロンプトをコピーしました" : "コピーに失敗しました");
-            });
-
-            const targets = buildAiTargets(item);
-            const target = targets[serviceKey];
-            if (!target) {
-                return false;
-            }
-
-            if (isLikelyMobileDevice()) {
-                openAppWithFallback(target.app, target.web);
-            } else {
-                openExternalUrl(target.web);
-            }
-            return false;
-        };
 
         function pickAvatarInitial(value) {
             const text = String(value ?? "").trim();
@@ -640,15 +570,15 @@ ${item.text}
         }
 
         function renderAiActions(item) {
-            const aiTargets = buildAiTargets(item);
+            const aiUrls = buildAiUrls(item);
             return `
                 <div class="ai-grid grid gap-1.5">
-                    <a href="${aiTargets.claude.web}" target="_blank" rel="noopener noreferrer" onclick="return openAiFor(event, ${item.originalIndex}, 'claude')" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="Claude"><img src="https://www.google.com/s2/favicons?domain=claude.ai&sz=64" alt="Claude" class="w-4 h-4 rounded-sm">Claude</a>
-                    <a href="${aiTargets.chatgpt.web}" target="_blank" rel="noopener noreferrer" onclick="return openAiFor(event, ${item.originalIndex}, 'chatgpt')" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="ChatGPT"><img src="https://www.google.com/s2/favicons?domain=chatgpt.com&sz=64" alt="ChatGPT" class="w-4 h-4 rounded-sm">ChatGPT</a>
-                    <a href="${aiTargets.gemini.web}" target="_blank" rel="noopener noreferrer" onclick="return openAiFor(event, ${item.originalIndex}, 'gemini')" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="Gemini"><img src="https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" alt="Gemini" class="w-4 h-4 rounded-sm">Gemini</a>
-                    <a href="${aiTargets.grok.web}" target="_blank" rel="noopener noreferrer" onclick="return openAiFor(event, ${item.originalIndex}, 'grok')" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="Grok"><img src="https://www.google.com/s2/favicons?domain=grok.com&sz=64" alt="Grok" class="w-4 h-4 rounded-sm">Grok</a>
-                    <a href="${aiTargets.aistudio.web}" target="_blank" rel="noopener noreferrer" onclick="return openAiFor(event, ${item.originalIndex}, 'aistudio')" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="AI Studio"><img src="https://www.google.com/s2/favicons?domain=aistudio.google.com&sz=64" alt="AI Studio" class="w-4 h-4 rounded-sm">AI Studio</a>
-                    <a href="${aiTargets.google.web}" target="_blank" rel="noopener noreferrer" onclick="return openAiFor(event, ${item.originalIndex}, 'google')" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="Google"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=64" alt="Google" class="w-4 h-4 rounded-sm">Google</a>
+                    <a href="${aiUrls.claude}" target="_blank" rel="noopener noreferrer" onclick="copyPromptFor(${item.originalIndex})" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="Claude"><img src="https://www.google.com/s2/favicons?domain=claude.ai&sz=64" alt="Claude" class="w-4 h-4 rounded-sm">Claude</a>
+                    <a href="${aiUrls.chatgpt}" target="_blank" rel="noopener noreferrer" onclick="copyPromptFor(${item.originalIndex})" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="ChatGPT"><img src="https://www.google.com/s2/favicons?domain=chatgpt.com&sz=64" alt="ChatGPT" class="w-4 h-4 rounded-sm">ChatGPT</a>
+                    <a href="${aiUrls.gemini}" target="_blank" rel="noopener noreferrer" onclick="copyPromptFor(${item.originalIndex})" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="Gemini"><img src="https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" alt="Gemini" class="w-4 h-4 rounded-sm">Gemini</a>
+                    <a href="${aiUrls.grok}" target="_blank" rel="noopener noreferrer" onclick="copyPromptFor(${item.originalIndex})" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="Grok"><img src="https://www.google.com/s2/favicons?domain=grok.com&sz=64" alt="Grok" class="w-4 h-4 rounded-sm">Grok</a>
+                    <a href="${aiUrls.aistudio}" target="_blank" rel="noopener noreferrer" onclick="copyPromptFor(${item.originalIndex})" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="AI Studio"><img src="https://www.google.com/s2/favicons?domain=aistudio.google.com&sz=64" alt="AI Studio" class="w-4 h-4 rounded-sm">AI Studio</a>
+                    <a href="${aiUrls.google}" target="_blank" rel="noopener noreferrer" onclick="copyPromptFor(${item.originalIndex})" class="h-9 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-800 text-[10px] font-bold hover:bg-zinc-100 transition-colors flex items-center justify-center gap-1.5" title="Google"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=64" alt="Google" class="w-4 h-4 rounded-sm">Google</a>
                 </div>`;
         }
 
@@ -747,6 +677,16 @@ ${item.text}
             }
             cardsContainer.className = "pb-12 flex flex-col gap-2";
         }
+
+        window.copyPromptFor = async (index) => {
+            const item = rawData[index];
+            if (!item) {
+                return;
+            }
+            const prompt = buildPrompt(item);
+            const copied = await copyPrompt(prompt);
+            showToast(copied ? "プロンプトをコピーしました" : "コピーに失敗しました");
+        };
 
         function renderTimelineTabs() {
             const counts = toCountMap(rawData, (item) => item.timeline || "未分類タイムライン");
