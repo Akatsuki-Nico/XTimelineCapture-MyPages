@@ -213,7 +213,7 @@
 
             const items = validUrls.map((url, i) => {
                 if (isVideoUrl(url)) {
-                    return `<video class="w-full rounded-lg object-cover bg-black" style="max-height:300px" controls playsinline crossorigin="anonymous" src="${url}" preload="metadata" onerror="this.outerHTML='<a href=&quot;'+this.src+'&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot; class=&quot;flex items-center justify-center w-full h-32 bg-zinc-800 rounded-lg text-white text-xs font-bold hover:bg-zinc-700&quot;>&#9654; 動画を開く</a>'"></video>`;
+                    return `<video class="w-full rounded-lg object-cover bg-black" style="max-height:300px" controls preload="metadata" src="${url}" onerror="this.outerHTML='<a href=&quot;'+this.src+'&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot; class=&quot;flex items-center justify-center w-full h-32 bg-zinc-800 rounded-lg text-white text-xs font-bold hover:bg-zinc-700&quot;>&#9654; 動画を開く</a>'"></video>`;
                 } else {
                     return `<img class="w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity" style="max-height:300px" src="${url}" loading="lazy" onclick="_openMediaLightbox('${regId}',${i})" alt="media">`;
                 }
@@ -264,6 +264,7 @@
                 imgEl.classList.add('hidden');
                 imgEl.src = '';
                 vidEl.src = safe;
+                vidEl.onerror = function() { window.open(safe, '_blank', 'noopener'); closeLightbox(); };
                 vidEl.classList.remove('hidden');
             } else {
                 vidEl.classList.add('hidden');
@@ -418,6 +419,13 @@
         if (!hasScores) {
             currentSort = "postedAtDesc";
             sortSelect.value = "postedAtDesc";
+            // Hide score-related sort options when no score data exists
+            const scoreOptionValues = ["score", "engagementScore", "replyScore", "saveScore", "shareScore", "impressionsScore"];
+            for (const opt of sortSelect.options) {
+                if (scoreOptionValues.includes(opt.value)) {
+                    opt.style.display = "none";
+                }
+            }
         }
 
         const timelineOptions = ["すべて", ...new Set(rawData.map((item) => item.timeline || "未分類タイムライン"))];
@@ -698,6 +706,7 @@ ${item.text}
             const timeline = escapeHtml(item.timeline || "未分類タイムライン");
             const majorCategory = escapeHtml(item.majorCategory || "その他");
             const badge = escapeHtml(String(item.score || 0));
+            const scoreBadgeHtml = hasScores ? `<span class="bg-zinc-100 text-zinc-800 text-[10px] font-bold px-2 py-1 rounded">SCORE ${badge}</span>` : "";
             const avatarHtml = buildAvatarHtml(item, avatarSize, avatarText);
             return `
                 <div class="flex justify-between items-start gap-3">
@@ -710,7 +719,7 @@ ${item.text}
                         </div>
                     </div>
                     <div class="flex flex-col items-end gap-1 shrink-0">
-                        <span class="bg-zinc-100 text-zinc-800 text-[10px] font-bold px-2 py-1 rounded">SCORE ${badge}</span>
+                        ${scoreBadgeHtml}
                         <span class="bg-zinc-100 text-zinc-700 text-[10px] font-bold px-2 py-1 rounded">${timeline}</span>
                         <span class="bg-zinc-100 text-zinc-600 text-[10px] font-bold px-2 py-1 rounded">${majorCategory}</span>
                     </div>
@@ -724,7 +733,7 @@ ${item.text}
             return `
                 <div class="border-l-4 border-gray-300 pl-3 mt-2 bg-gray-50 rounded text-xs text-gray-600">
                     <span class="font-semibold">&#x1f501; ${escapeHtml(qp.display_name || "")} @${escapeHtml(qp.user_name || "")}</span>
-                    <p class="line-clamp-3 mt-0.5">${escapeHtml(qp.text || "")}</p>
+                    <p class="mt-0.5 whitespace-pre-wrap break-words">${escapeHtml(qp.text || "")}</p>
                     ${qpMedia}
                 </div>`;
         }
