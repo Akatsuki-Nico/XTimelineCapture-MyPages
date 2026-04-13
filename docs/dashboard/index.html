@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XTimelineCapture Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Noto Sans JP', sans-serif; }
@@ -77,6 +78,7 @@
                         <option value="list">リスト表示</option>
                         <option value="compact">コンパクト表示</option>
                     </select>
+                    <button id="openPromptBtn" onclick="openPromptModal()" class="whitespace-nowrap px-3 py-2 text-[12px] font-bold text-zinc-600 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-lg transition-colors">&#9881; プロンプト</button>
                 </div>
                 <div class="space-y-3 border-t border-zinc-200 pt-3">
                     <div>
@@ -121,9 +123,9 @@
         let activeMajorCategory = "すべて";
         let activeMiddleCategory = "すべて";
         let activeDetailTag = "";
-        let activeLanguage = "";
+        let activeLanguage = "ja";
         let searchQuery = "";
-        let currentSort = "score";
+        let currentSort = "bookmarks";
         const isMobile = window.matchMedia("(max-width: 768px)").matches;
         let currentView = isMobile ? "compact" : "cards";
         const timelineTabsContainer = document.getElementById("timelineTabsContainer");
@@ -211,16 +213,53 @@
             const regId = 'ml' + (_mediaCounter++);
             _mediaRegistry[regId] = validUrls;
 
+            const dlBtn = (u) => `<button onclick="event.stopPropagation();downloadMedia('${u}')" class="absolute bottom-1 right-1 z-10 w-7 h-7 flex items-center justify-center rounded-md bg-zinc-900/70 text-white text-[12px] hover:bg-zinc-900/90 transition-colors backdrop-blur-sm" title="ダウンロード">&#11015;</button>`;
             const items = validUrls.map((url, i) => {
-                if (isVideoUrl(url)) {
-                    return `<video class="w-full rounded-lg object-cover bg-black" style="max-height:300px" controls preload="metadata" src="${url}" onerror="this.outerHTML='<a href=&quot;'+this.src+'&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot; class=&quot;flex items-center justify-center w-full h-32 bg-zinc-800 rounded-lg text-white text-xs font-bold hover:bg-zinc-700&quot;>&#9654; 動画を開く</a>'"></video>`;
-                } else {
-                    return `<img class="w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity" style="max-height:300px" src="${url}" loading="lazy" onclick="_openMediaLightbox('${regId}',${i})" alt="media">`;
-                }
+                const media = isVideoUrl(url)
+                    ? `<video class="w-full rounded-lg object-cover bg-black" style="max-height:300px" controls playsinline preload="metadata" src="${url}" onerror="this.outerHTML='<a href=&quot;'+this.src+'&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot; class=&quot;flex items-center justify-center w-full h-32 bg-zinc-800 rounded-lg text-white text-xs font-bold hover:bg-zinc-700&quot;>&#9654; 動画を開く</a>'"></video>`
+                    : `<img class="w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity" style="max-height:300px" src="${url}" loading="lazy" onclick="_openMediaLightbox('${regId}',${i})" alt="media">`;
+                return `<div class="relative">${media}${dlBtn(url)}</div>`;
             }).join("");
 
             const gridClass = validUrls.length >= 2 ? 'grid grid-cols-2 gap-1' : '';
             return `<div class="mt-2 ${gridClass} overflow-hidden rounded-lg">${items}</div>`;
+        }
+
+        async function downloadMedia(url) {
+            const filename = url.split("/").pop().split("?")[0] || "media";
+            try {
+                const res = await fetch(url, {mode:"cors"});
+                if (!res.ok) throw new Error();
+                const blob = await res.blob();
+                const a = Object.assign(document.createElement("a"), {href: URL.createObjectURL(blob), download: filename});
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch {
+                window.open(url, "_blank");
+            }
+        }
+
+        async function downloadAllMedia(urls, postId) {
+            const btn = document.querySelector(`[data-dlall="${postId}"]`);
+            if (btn) btn.textContent = "⏳";
+            try {
+                const zip = new JSZip();
+                await Promise.all(urls.map(async (url, i) => {
+                    try {
+                        const res = await fetch(url, {mode:"cors"});
+                        if (!res.ok) throw new Error();
+                        const blob = await res.blob();
+                        const ext = url.split(".").pop().split("?")[0] || "jpg";
+                        zip.file(`media_${i+1}.${ext}`, blob);
+                    } catch {}
+                }));
+                const blob = await zip.generateAsync({type:"blob"});
+                const a = Object.assign(document.createElement("a"), {href: URL.createObjectURL(blob), download: `media_${postId}.zip`});
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } finally {
+                if (btn) btn.innerHTML = "&#128230; 一括DL";
+            }
         }
 
         function _openMediaLightbox(regId, idx) {
@@ -548,18 +587,25 @@
             }
         }
 
-        function buildPrompt(item) {
-            return `以下のSNSの投稿を読み、日本のITプロフェッショナルが理解しやすいように【自然な日本語に意訳・要約】してください。
+        const DEFAULT_AI_PROMPT = `以下のSNSの投稿を読み、日本のITプロフェッショナルが理解しやすいように【自然な日本語に意訳・要約】してください。
 
 【対象のポスト】
-投稿者: ${item.displayName} (@${item.userName})
-URL: ${item.url}
+投稿者: {displayName} (@{userName})
+URL: {url}
 本文:
-${item.text}
+{text}
 
 【回答のルール】
 ・単なる直訳ではなく、背景や文脈を補足して要約してください。
 ・重要なリンクやツール名、ハッシュタグは残してください。`;
+
+        function buildPrompt(item) {
+            const template = localStorage.getItem("aiPromptTemplate") || DEFAULT_AI_PROMPT;
+            return template
+                .replace(/\{displayName\}/g, item.displayName || "")
+                .replace(/\{userName\}/g, item.userName || "")
+                .replace(/\{url\}/g, item.url || "")
+                .replace(/\{text\}/g, item.text || "");
         }
 
         function buildAiUrl(aiKey, prompt) {
@@ -743,6 +789,14 @@ ${item.text}
             return `<span class="text-[11px] text-zinc-400 font-bold" title="引用ポストあり">&#x1f501;</span>`;
         }
 
+        function renderBulkDownloadBtn(item) {
+            const urls = (item.mediaUrls || []).map(safeUrl).filter(u => u && u !== "#");
+            if (urls.length < 2) return "";
+            const postId = escapeJs(item.userName + "_" + item.originalIndex);
+            const urlsJson = JSON.stringify(urls).replace(/'/g, "\'");
+            return `<button data-dlall="${postId}" onclick="downloadAllMedia(${escapeHtml(urlsJson).replace(/"/g, '&quot;')},'${postId}')" class="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 rounded-lg transition-colors">&#128230; 一括DL</button>`;
+        }
+
         function renderCardItem(item) {
             const safeLink = safeUrl(item.url);
             const text = escapeHtml(item.text || "");
@@ -753,6 +807,7 @@ ${item.text}
                     <div class="mt-4 flex-1">
                         <p class="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-zinc-800">${text}</p>
                         ${renderMediaGrid(item.mediaUrls || [])}
+                        ${renderBulkDownloadBtn(item)}
                         ${renderQuotedPost(item)}
                     </div>
                     <div class="mt-3 min-h-[1.25rem]">${tagsHtml}</div>
@@ -774,6 +829,7 @@ ${item.text}
                     <div class="mt-3">
                         <p class="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-zinc-800">${text}</p>
                         ${renderMediaGrid(item.mediaUrls || [])}
+                        ${renderBulkDownloadBtn(item)}
                         ${renderQuotedPost(item)}
                     </div>
                     <div class="mt-2 min-h-[1.25rem]">${tagsHtml}</div>
@@ -885,7 +941,12 @@ ${item.text}
             }).join("");
         }
 
-        const LANGUAGE_LABELS = {"ja": "日本語", "en": "英語", "und": "不明"};
+        const LANGUAGE_LABELS = {
+          "ja":"日本語","en":"英語","und":"不明","zh":"中国語","ko":"韓国語",
+          "fr":"フランス語","de":"ドイツ語","es":"スペイン語","pt":"ポルトガル語",
+          "ar":"アラビア語","hi":"ヒンディー語","ru":"ロシア語","it":"イタリア語",
+          "th":"タイ語","vi":"ベトナム語","id":"インドネシア語","tr":"トルコ語"
+        };
 
         function getLanguageLabel(code) {
             return LANGUAGE_LABELS[code] || code;
@@ -897,6 +958,13 @@ ${item.text}
 
         function renderLanguageChips() {
             const languages = getAvailableLanguages();
+            languages.sort((a, b) => {
+                if (a === "ja") return -1;
+                if (b === "ja") return 1;
+                if (a === "en") return -1;
+                if (b === "en") return 1;
+                return getLanguageLabel(a).localeCompare(getLanguageLabel(b), "ja");
+            });
             const counts = toCountMap(rawData, (item) => item.language || "");
             const allActive = activeLanguage === "";
             let html = `<button onclick="setLanguage('')" class="filter-chip whitespace-nowrap px-3 py-1 rounded-full text-[12px] font-bold transition-all border ${allActive ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400"}">全て <span class="${allActive ? "text-zinc-300" : "text-zinc-400"}">(${rawData.length})</span></button>`;
@@ -912,6 +980,7 @@ ${item.text}
             activeLanguage = activeLanguage === lang ? "" : lang;
             renderFilterPanels();
             renderPosts();
+            saveFilterState();
         };
 
         function renderActiveFilters() {
@@ -956,6 +1025,40 @@ ${item.text}
             renderActiveFilters();
         }
 
+        function saveFilterState() {
+            try {
+                localStorage.setItem("filterState", JSON.stringify({
+                    currentTimeline, activeMajorCategory, activeMiddleCategory,
+                    activeDetailTag, activeLanguage, searchQuery, currentSort,
+                    currentView, isFilterOpen
+                }));
+            } catch(e) {}
+        }
+
+        function loadFilterState() {
+            try {
+                const saved = localStorage.getItem("filterState");
+                if (!saved) return;
+                const state = JSON.parse(saved);
+                if (state.currentTimeline !== undefined) currentTimeline = state.currentTimeline;
+                if (state.activeMajorCategory !== undefined) activeMajorCategory = state.activeMajorCategory;
+                if (state.activeMiddleCategory !== undefined) activeMiddleCategory = state.activeMiddleCategory;
+                if (state.activeDetailTag !== undefined) activeDetailTag = state.activeDetailTag;
+                if (state.activeLanguage !== undefined) activeLanguage = state.activeLanguage;
+                if (state.searchQuery !== undefined) {
+                    searchQuery = state.searchQuery;
+                    searchInput.value = state.searchQuery;
+                }
+                if (state.currentSort !== undefined) currentSort = state.currentSort;
+                if (state.currentView !== undefined) currentView = state.currentView;
+                if (state.isFilterOpen !== undefined) {
+                    isFilterOpen = state.isFilterOpen;
+                    filterArea.classList.toggle("filter-collapsed", !isFilterOpen);
+                    toggleIcon.classList.toggle("icon-collapsed", !isFilterOpen);
+                }
+            } catch(e) {}
+        }
+
         function clearFilters(preserveTimeline = true) {
             searchInput.value = "";
             searchQuery = "";
@@ -966,6 +1069,7 @@ ${item.text}
             if (!preserveTimeline) {
                 currentTimeline = "すべて";
             }
+            localStorage.removeItem("filterState");
             renderFilterPanels();
             renderPosts();
             showToast("フィルターを解除しました");
@@ -978,6 +1082,7 @@ ${item.text}
             activeDetailTag = "";
             renderFilterPanels();
             renderPosts();
+            saveFilterState();
         };
 
         window.setMajorCategory = (major) => {
@@ -986,6 +1091,7 @@ ${item.text}
             activeDetailTag = "";
             renderFilterPanels();
             renderPosts();
+            saveFilterState();
         };
 
         window.setMiddleCategory = (middle) => {
@@ -993,12 +1099,14 @@ ${item.text}
             activeDetailTag = "";
             renderFilterPanels();
             renderPosts();
+            saveFilterState();
         };
 
         window.toggleDetailTag = (tag) => {
             activeDetailTag = tag;
             renderFilterPanels();
             renderPosts();
+            saveFilterState();
         };
 
         function getFilteredRows() {
@@ -1066,16 +1174,19 @@ ${item.text}
             searchQuery = event.target.value.toLowerCase();
             renderFilterPanels();
             renderPosts();
+            saveFilterState();
         });
 
         sortSelect.addEventListener("change", (event) => {
             currentSort = event.target.value;
             renderPosts();
+            saveFilterState();
         });
 
         viewSelect.addEventListener("change", (event) => {
             currentView = event.target.value;
             renderPosts();
+            saveFilterState();
         });
 
         clearTopBtn.addEventListener("click", () => {
@@ -1095,10 +1206,53 @@ ${item.text}
             renderPosts(true);
         });
 
+        function openPromptModal() {
+            const current = localStorage.getItem("aiPromptTemplate") || DEFAULT_AI_PROMPT;
+            document.getElementById("promptTextarea").value = current;
+            document.getElementById("promptModal").classList.remove("hidden");
+            document.body.style.overflow = "hidden";
+        }
+
+        function savePrompt() {
+            const value = document.getElementById("promptTextarea").value.trim();
+            if (value) {
+                localStorage.setItem("aiPromptTemplate", value);
+            } else {
+                localStorage.removeItem("aiPromptTemplate");
+            }
+            closePromptModal();
+            showToast("プロンプトを保存しました");
+        }
+
+        function resetPrompt() {
+            document.getElementById("promptTextarea").value = DEFAULT_AI_PROMPT;
+            localStorage.removeItem("aiPromptTemplate");
+            showToast("プロンプトをデフォルトにリセットしました");
+        }
+
+        function closePromptModal() {
+            document.getElementById("promptModal").classList.add("hidden");
+            document.body.style.overflow = "";
+        }
+
+        loadFilterState();
+        sortSelect.value = currentSort;
         viewSelect.value = currentView;
         renderFilterPanels();
         renderPosts();
     </script>
+<div id="promptModal" class="hidden fixed inset-0 z-[60] bg-black/60 flex items-center justify-center" onclick="if(event.target===this)closePromptModal()">
+    <div class="bg-zinc-50 border border-zinc-300 rounded-xl shadow-2xl w-full max-w-lg mx-4 p-6">
+        <h3 class="text-sm font-bold text-zinc-900 mb-3">AI プロンプト テンプレート編集</h3>
+        <p class="text-[11px] text-zinc-500 mb-3">変数: <code class="bg-zinc-200 px-1 rounded">{displayName}</code> <code class="bg-zinc-200 px-1 rounded">{userName}</code> <code class="bg-zinc-200 px-1 rounded">{url}</code> <code class="bg-zinc-200 px-1 rounded">{text}</code></p>
+        <textarea id="promptTextarea" rows="12" class="w-full bg-white border border-zinc-300 rounded-lg p-3 text-sm text-zinc-800 focus:outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 resize-y"></textarea>
+        <div class="flex justify-end gap-2 mt-4">
+            <button onclick="resetPrompt()" class="px-4 py-2 text-[12px] font-bold text-zinc-600 bg-zinc-200 hover:bg-zinc-300 rounded-lg transition-colors">リセット</button>
+            <button onclick="closePromptModal()" class="px-4 py-2 text-[12px] font-bold text-zinc-600 bg-zinc-200 hover:bg-zinc-300 rounded-lg transition-colors">閉じる</button>
+            <button onclick="savePrompt()" class="px-4 py-2 text-[12px] font-bold text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors">保存</button>
+        </div>
+    </div>
+</div>
 <div id="lightbox-overlay"
      class="hidden fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
      onclick="if(event.target===this)closeLightbox()">
