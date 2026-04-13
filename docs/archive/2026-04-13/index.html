@@ -92,13 +92,17 @@
                         <p class="text-[11px] text-zinc-400 font-bold tracking-wider mb-1.5">大カテゴリ</p>
                         <div id="majorCategoryContainer" class="flex gap-2 overflow-x-auto hide-scrollbar pb-1"></div>
                     </div>
-                    <div>
+                    <div class="filter-row-middle">
                         <p class="text-[11px] text-zinc-400 font-bold tracking-wider mb-1.5">中カテゴリ</p>
                         <div id="middleCategoryContainer" class="flex gap-2 overflow-x-auto hide-scrollbar pb-1"></div>
                     </div>
                     <div>
                         <p class="text-[11px] text-zinc-400 font-bold tracking-wider mb-1.5">詳細タグ</p>
                         <div id="detailTagsContainer" class="flex gap-2 overflow-x-auto hide-scrollbar pb-1"></div>
+                    </div>
+                    <div>
+                        <p class="text-[11px] text-zinc-400 font-bold tracking-wider mb-1.5">種別</p>
+                        <div id="categoryContainer" class="flex gap-2 overflow-x-auto hide-scrollbar pb-1"></div>
                     </div>
                     <div>
                         <p class="text-[11px] text-zinc-400 font-bold tracking-wider mb-1.5">言語</p>
@@ -123,6 +127,7 @@
         let activeMajorCategory = "すべて";
         let activeMiddleCategory = "すべて";
         let activeDetailTag = "";
+        let activeCategory = "";
         let activeLanguage = "ja";
         let searchQuery = "";
         let currentSort = "bookmarks";
@@ -132,6 +137,7 @@
         const majorCategoryContainer = document.getElementById("majorCategoryContainer");
         const middleCategoryContainer = document.getElementById("middleCategoryContainer");
         const detailTagsContainer = document.getElementById("detailTagsContainer");
+        const categoryContainer = document.getElementById("categoryContainer");
         const languageContainer = document.getElementById("languageContainer");
         const activeFiltersContainer = document.getElementById("activeFiltersContainer");
         const cardsContainer = document.getElementById("cardsContainer");
@@ -431,7 +437,7 @@
             ...item,
             timeline: String(item.timeline || item.category || "未分類タイムライン").trim() || "未分類タイムライン",
             majorCategory: String(item.majorCategory || "その他").trim() || "その他",
-            middleCategory: String(item.middleCategory || item.timeline || "未分類タイムライン").trim() || "未分類タイムライン",
+            middleCategory: String(item.middleCategory || "").trim(),
             tags: normalizeTagArray(item.tags),
             rawFields: normalizeRawFields(item.rawFields),
             originalIndex: index,
@@ -910,8 +916,14 @@ URL: {url}
 
         function renderMiddleCategoryChips() {
             const rows = getRowsForCurrentMajor();
-            const counts = toCountMap(rows, (item) => item.middleCategory || "未分類");
+            const counts = toCountMap(rows, (item) => item.middleCategory || "");
             const options = getAvailableMiddleCategories();
+            const parentEl = middleCategoryContainer.closest("div.filter-row-middle");
+            if (options.length <= 1) {
+                if (parentEl) parentEl.style.display = "none";
+                return;
+            }
+            if (parentEl) parentEl.style.display = "";
             middleCategoryContainer.innerHTML = options.map((middle) => {
                 const count = middle === "すべて" ? rows.length : (counts.get(middle) || 0);
                 const active = activeMiddleCategory === middle;
@@ -956,6 +968,18 @@ URL: {url}
             return [...new Set(rawData.map((item) => item.language).filter(Boolean))].sort();
         }
 
+        function renderCategoryChips() {
+            const cats = [...new Set(rawData.map(i => i.category).filter(Boolean))].sort();
+            const counts = toCountMap(rawData, i => i.category || "");
+            const allCount = rawData.length;
+            const allActive = activeCategory === "";
+            categoryContainer.innerHTML = `<button onclick="setCategory('')" class="filter-chip whitespace-nowrap px-3 py-1 rounded-full text-[12px] font-bold transition-all border ${allActive ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400"}">全て <span class="${allActive ? "text-zinc-300" : "text-zinc-400"}">(${allCount})</span></button>`
+                + cats.map(cat => {
+                    const active = activeCategory === cat;
+                    return `<button onclick="setCategory('${escapeJs(cat)}')" class="filter-chip whitespace-nowrap px-3 py-1 rounded-full text-[12px] font-bold transition-all border ${active ? "bg-zinc-900 text-white border-zinc-900" : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-400"}">${escapeHtml(cat)} <span class="${active ? "text-zinc-300" : "text-zinc-400"}">(${counts.get(cat) || 0})</span></button>`;
+                }).join("");
+        }
+
         function renderLanguageChips() {
             const languages = getAvailableLanguages();
             languages.sort((a, b) => {
@@ -975,6 +999,13 @@ URL: {url}
             }).join("");
             languageContainer.innerHTML = html;
         }
+
+        window.setCategory = (cat) => {
+            activeCategory = activeCategory === cat ? "" : cat;
+            renderFilterPanels();
+            renderPosts();
+            saveFilterState();
+        };
 
         window.setLanguage = (lang) => {
             activeLanguage = activeLanguage === lang ? "" : lang;
@@ -1021,6 +1052,7 @@ URL: {url}
             renderMajorCategoryChips();
             renderMiddleCategoryChips();
             renderDetailTagChips();
+            renderCategoryChips();
             renderLanguageChips();
             renderActiveFilters();
         }
@@ -1029,7 +1061,7 @@ URL: {url}
             try {
                 localStorage.setItem("filterState", JSON.stringify({
                     currentTimeline, activeMajorCategory, activeMiddleCategory,
-                    activeDetailTag, activeLanguage, searchQuery, currentSort,
+                    activeDetailTag, activeLanguage, activeCategory, searchQuery, currentSort,
                     currentView, isFilterOpen
                 }));
             } catch(e) {}
@@ -1045,6 +1077,7 @@ URL: {url}
                 if (state.activeMiddleCategory !== undefined) activeMiddleCategory = state.activeMiddleCategory;
                 if (state.activeDetailTag !== undefined) activeDetailTag = state.activeDetailTag;
                 if (state.activeLanguage !== undefined) activeLanguage = state.activeLanguage;
+                if (state.activeCategory !== undefined) activeCategory = state.activeCategory;
                 if (state.searchQuery !== undefined) {
                     searchQuery = state.searchQuery;
                     searchInput.value = state.searchQuery;
@@ -1118,12 +1151,13 @@ URL: {url}
                     const matchMiddle = activeMiddleCategory === "すべて" || item.middleCategory === activeMiddleCategory;
                     const matchTag = activeDetailTag === "" || ((item.tags || []).includes(activeDetailTag));
                     const matchLanguage = activeLanguage === "" || item.language === activeLanguage;
+                    const matchCategory = activeCategory === "" || item.category === activeCategory;
                     const rawFieldText = (item.rawFields || [])
                         .map((field) => `${field.key} ${field.value}`)
                         .join(" ");
                     const haystack = `${item.text || ""} ${item.displayName || ""} ${item.userName || ""} ${item.timeline || ""} ${item.majorCategory || ""} ${item.middleCategory || ""} ${(item.tags || []).join(" ")} ${rawFieldText}`.toLowerCase();
                     const matchQuery = haystack.includes(searchQuery);
-                    return matchTimeline && matchMajor && matchMiddle && matchTag && matchLanguage && matchQuery;
+                    return matchTimeline && matchMajor && matchMiddle && matchTag && matchLanguage && matchCategory && matchQuery;
                 })
                 .sort((a, b) => {
                     const primary = compareNumbers(
