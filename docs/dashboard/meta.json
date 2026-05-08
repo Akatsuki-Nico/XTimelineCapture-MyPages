@@ -1,10 +1,11 @@
 {
-  "source_dashboard": "/Users/chibaakifumi/Library/CloudStorage/GoogleDrive-admin@astraltown.com/マイドライブ/idea/Clippings/XTimelineCapture/2026-05-08_X情報収集_mac/dashboard/index.html",
-  "synced_at_utc": "2026-05-07 21:34:03Z",
+  "source_dashboard": "/mnt/gdrive/マイドライブ/idea/Clippings/XTimelineCapture/2026-05-09_X情報収集_win/dashboard/index.html",
+  "synced_at_utc": "2026-05-08 21:28:35Z",
   "site_url": "https://akatsuki-nico.github.io/XTimelineCapture-MyPages/",
   "archive_enabled": true,
   "archive_keep_days": 14,
   "archive_dates": [
+    "2026-05-09",
     "2026-05-08",
     "2026-05-07",
     "2026-05-06",
@@ -17,8 +18,7 @@
     "2026-04-29",
     "2026-04-28",
     "2026-04-27",
-    "2026-04-26",
-    "2026-04-25"
+    "2026-04-26"
   ],
   "redact_private_fields": true,
   "redact_field_keys": [
