@@ -10,10 +10,14 @@ import re
 import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 VIDEO_THUMB_DIR = "video_thumbs"
+MAX_VIDEO_THUMBS = 80
+MAX_WORKERS = 6
+FFMPEG_TIMEOUT_SECONDS = 12
 SOURCE_DATA_PATTERN = re.compile(
     r"(const sourceData = )(.*?)(;\n\s*let current(?:Category|Timeline) =)",
     flags=re.S,
@@ -67,7 +71,7 @@ def build_video_thumbnails(rows: list[dict[str, Any]], html_path: Path) -> None:
     thumb_dir = html_path.parent / VIDEO_THUMB_DIR
     thumb_dir.mkdir(parents=True, exist_ok=True)
 
-    target_urls = urls[:80]
+    target_urls = urls[:MAX_VIDEO_THUMBS]
     existing_count = sum(
         1
         for url in target_urls
@@ -75,7 +79,7 @@ def build_video_thumbnails(rows: list[dict[str, Any]], html_path: Path) -> None:
     )
     new_count = len(target_urls) - existing_count
     skipped_count = max(0, len(urls) - len(target_urls))
-    estimated_seconds = new_count * 1.0
+    estimated_seconds = max(1, int((new_count / MAX_WORKERS) * FFMPEG_TIMEOUT_SECONDS * 0.75))
     print(
         "[INFO] Video thumbnails: "
         f"{html_path}: {len(urls)} videos found, {existing_count} cached, "
@@ -84,11 +88,7 @@ def build_video_thumbnails(rows: list[dict[str, Any]], html_path: Path) -> None:
         f"Estimated time: about {estimated_seconds:.0f}s."
     )
 
-    thumb_map: dict[str, str] = {}
-    started_at = time.monotonic()
-    generated_count = 0
-    failed_count = 0
-    for url in target_urls:
+    def ensure_thumb(url: str) -> tuple[str, str | None, bool]:
         digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:20]
         thumb_path = thumb_dir / f"{digest}.jpg"
         if not thumb_path.exists() or thumb_path.stat().st_size == 0:
@@ -100,6 +100,8 @@ def build_video_thumbnails(rows: list[dict[str, Any]], html_path: Path) -> None:
                 "-y",
                 "-ss",
                 "00:00:00.4",
+                "-rw_timeout",
+                str(FFMPEG_TIMEOUT_SECONDS * 1_000_000),
                 "-i",
                 url,
                 "-frames:v",
@@ -111,15 +113,28 @@ def build_video_thumbnails(rows: list[dict[str, Any]], html_path: Path) -> None:
                 str(thumb_path),
             ]
             try:
-                subprocess.run(cmd, check=True, timeout=25)
-                generated_count += 1
+                subprocess.run(cmd, check=True, timeout=FFMPEG_TIMEOUT_SECONDS)
             except (subprocess.SubprocessError, OSError):
                 if thumb_path.exists() and thumb_path.stat().st_size == 0:
                     thumb_path.unlink(missing_ok=True)
-                failed_count += 1
-                continue
+                return url, None, False
         if thumb_path.exists() and thumb_path.stat().st_size > 0:
-            thumb_map[url] = f"{VIDEO_THUMB_DIR}/{thumb_path.name}"
+            return url, f"{VIDEO_THUMB_DIR}/{thumb_path.name}", True
+        return url, None, False
+
+    thumb_map: dict[str, str] = {}
+    started_at = time.monotonic()
+    generated_count = 0
+    failed_count = 0
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [executor.submit(ensure_thumb, url) for url in target_urls]
+        for future in as_completed(futures):
+            url, relative_path, ok = future.result()
+            if ok and relative_path:
+                thumb_map[url] = relative_path
+                generated_count += 1
+            else:
+                failed_count += 1
 
     elapsed = time.monotonic() - started_at
     print(
