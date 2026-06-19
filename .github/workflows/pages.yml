@@ -37,8 +37,7 @@ jobs:
 
       - name: Generate video thumbnails
         run: |
-          shopt -s nullglob
-          python .github/scripts/generate_dashboard_video_thumbs.py docs/dashboard/index.html docs/archive/*/index.html
+          python .github/scripts/generate_dashboard_video_thumbs.py docs/dashboard/index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
