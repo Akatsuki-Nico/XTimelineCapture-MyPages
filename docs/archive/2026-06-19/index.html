@@ -154,8 +154,8 @@
             min-height: 12rem;
             aspect-ratio: 16 / 10;
             background:
-                linear-gradient(135deg, rgba(24,24,27,0.92), rgba(63,63,70,0.82)),
-                radial-gradient(circle at 30% 20%, rgba(250,250,250,0.18), transparent 28%);
+                radial-gradient(circle at 25% 18%, rgba(250,250,250,0.24), transparent 24%),
+                linear-gradient(135deg, #18181b 0%, #3f3f46 42%, #0f172a 100%);
             background-position: center;
             background-size: cover;
             overflow: hidden;
@@ -167,7 +167,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.45;
+            opacity: 0;
         }
         .video-play-badge {
             width: 3.25rem;
@@ -176,6 +176,15 @@
             background: rgba(250,250,250,0.92);
             color: #18181b;
             box-shadow: 0 12px 32px rgba(0,0,0,0.28);
+        }
+        .video-thumb-strip {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(90deg, rgba(255,255,255,0.08) 0 8%, transparent 8% 14%),
+                linear-gradient(135deg, rgba(255,255,255,0.08), transparent 36%);
+            background-size: 4.5rem 100%, 100% 100%;
+            opacity: 0.7;
         }
 
         /* Hover effects for desktop cards */
@@ -240,6 +249,9 @@
             .prompt-actions .save-prompt-button {
                 grid-column: 1 / -1;
                 order: -1;
+            }
+            #mobilePromptBtn {
+                bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
             }
         }
 
@@ -419,6 +431,8 @@
     </button>
 
     <button id="quickClearBtn" class="fixed bottom-4 right-4 z-[45] px-3 py-2 rounded-full border border-zinc-300 bg-white/95 backdrop-blur text-zinc-800 text-[12px] font-bold shadow-lg hover:bg-zinc-100 transition-colors min-h-[var(--tap-min)] dark:bg-zinc-800/95 dark:border-zinc-600 dark:text-zinc-300" aria-label="Clear all filters">フィルター解除</button>
+
+    <button id="mobilePromptBtn" class="sm:hidden fixed left-4 z-[45] px-3 py-2 rounded-full border border-zinc-300 bg-white/95 backdrop-blur text-zinc-800 text-[12px] font-bold shadow-lg hover:bg-zinc-100 transition-colors min-h-[var(--tap-min)] dark:bg-zinc-800/95 dark:border-zinc-600 dark:text-zinc-300" onclick="openPromptModal()" aria-label="Edit AI prompt template">&#9881; プロンプト</button>
 
     <!-- Scroll to top button -->
     <button id="scrollTopBtn" class="fixed bottom-16 right-4 z-[44] w-10 h-10 rounded-full border border-zinc-300 bg-white/95 backdrop-blur text-zinc-600 shadow-md flex items-center justify-center transition-all hover:bg-zinc-100 dark:bg-zinc-800/95 dark:border-zinc-600 dark:text-zinc-400" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Scroll to top">
@@ -743,7 +757,7 @@
             const dlBtn = (u) => `<button onclick="event.stopPropagation();downloadMedia('${u}')" class="absolute bottom-1 right-1 z-10 w-7 h-7 flex items-center justify-center rounded-md bg-zinc-900/70 text-white text-[12px] hover:bg-zinc-900/90 transition-colors backdrop-blur-sm" title="ダウンロード">&#11015;</button>`;
             const items = validUrls.map((url, i) => {
                 const media = isVideoUrl(url)
-                    ? `<button type="button" class="video-thumb-frame w-full rounded-lg cursor-pointer group" onclick="_openMediaLightbox('${regId}',${i})" aria-label="動画をプレビュー"><video class="video-thumb-video" muted playsinline preload="metadata" crossorigin="anonymous" src="${url}" onloadeddata="captureVideoPoster(this)" onerror="this.closest('.video-thumb-frame').classList.add('video-load-error')"></video><span class="absolute inset-0 flex items-center justify-center pointer-events-none"><span class="video-play-badge flex items-center justify-center text-xl font-bold group-hover:scale-105 transition-transform">&#9654;</span></span><span class="absolute left-2 bottom-2 max-w-[calc(100%-3rem)] truncate rounded-md bg-black/70 px-2 py-1 text-[11px] font-bold text-white backdrop-blur-sm">${videoMetaLabel(url)}</span></button>`
+                    ? `<button type="button" class="video-thumb-frame w-full rounded-lg cursor-pointer group" onclick="_openMediaLightbox('${regId}',${i})" aria-label="動画をプレビュー"><span class="video-thumb-strip pointer-events-none"></span><video class="video-thumb-video" muted playsinline preload="metadata" crossorigin="anonymous" src="${url}" onloadeddata="captureVideoPoster(this)" onerror="this.closest('.video-thumb-frame').classList.add('video-load-error')"></video><span class="absolute inset-0 flex items-center justify-center pointer-events-none"><span class="video-play-badge flex items-center justify-center text-xl font-bold group-hover:scale-105 transition-transform">&#9654;</span></span><span class="absolute left-2 top-2 rounded-md bg-white/90 px-2 py-1 text-[11px] font-bold text-zinc-900 shadow-sm">動画プレビュー</span><span class="absolute left-2 bottom-2 max-w-[calc(100%-3rem)] truncate rounded-md bg-black/70 px-2 py-1 text-[11px] font-bold text-white backdrop-blur-sm">${videoMetaLabel(url)}</span></button>`
                     : `<img class="w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity" style="max-height:300px" src="${url}" loading="lazy" onclick="_openMediaLightbox('${regId}',${i})" alt="media">`;
                 return `<div class="relative">${media}${dlBtn(url)}</div>`;
             }).join("");
@@ -1825,7 +1839,9 @@ URL: {url}
             textarea.value = current;
             document.getElementById("promptModal").classList.remove("hidden");
             document.body.style.overflow = "hidden";
-            setTimeout(() => textarea.focus(), 80);
+            if (window.innerWidth > 768) {
+                setTimeout(() => textarea.focus(), 80);
+            }
         }
 
         function savePrompt() {
