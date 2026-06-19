@@ -29,6 +29,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Generate video thumbnails
+        run: |
+          shopt -s nullglob
+          python .github/scripts/generate_dashboard_video_thumbs.py docs/dashboard/index.html docs/archive/*/index.html
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
