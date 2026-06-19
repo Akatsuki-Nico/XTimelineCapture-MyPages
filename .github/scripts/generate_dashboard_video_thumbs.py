@@ -19,7 +19,7 @@ MAX_VIDEO_THUMBS = 80
 MAX_WORKERS = 6
 FFMPEG_TIMEOUT_SECONDS = 12
 SOURCE_DATA_PATTERN = re.compile(
-    r"(const sourceData = )(.*?)(;\n\s*let current(?:Category|Timeline) =)",
+    r"(const sourceData = )(.*?)(;\n\s*(?:const DASHBOARD_PUBLIC_URL|let current(?:Category|Timeline))\b)",
     flags=re.S,
 )
 
