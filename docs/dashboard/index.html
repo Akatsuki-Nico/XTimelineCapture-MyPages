@@ -707,6 +707,17 @@
         function itemHasMedia(item) {
             return (item.mediaUrls || []).length > 0;
         }
+        function itemHasArticle(item) {
+            const values = [
+                item.category,
+                item.url,
+                ...(item.rawFields || []).map((field) => `${field.key} ${field.value}`),
+            ].join(" ").toLowerCase();
+            return values.includes("x.com/i/article")
+                || values.includes("/articles/")
+                || values.includes("article")
+                || values.includes("記事");
+        }
         function videoMetaLabel(url) {
             try {
                 const parsed = new URL(url);
@@ -1632,6 +1643,7 @@ URL: {url}
                 ["media", "メディアあり", rawData.filter(itemHasMedia).length],
                 ["image", "画像あり", rawData.filter(itemHasImage).length],
                 ["video", "動画あり", rawData.filter(itemHasVideo).length],
+                ["article", "記事あり", rawData.filter(itemHasArticle).length],
             ];
             const html = options.map(([value, label, count]) => {
                 const active = activeMediaType === value;
@@ -1680,7 +1692,7 @@ URL: {url}
                 chips.push(`言語: ${escapeHtml(getLanguageLabel(activeLanguage))}`);
             }
             if (activeMediaType !== "") {
-                const labels = { media: "メディアあり", image: "画像あり", video: "動画あり" };
+                const labels = { media: "メディアあり", image: "画像あり", video: "動画あり", article: "記事あり" };
                 chips.push(`メディア: ${labels[activeMediaType] || activeMediaType}`);
             }
             const queryText = (searchInput ? searchInput.value : (mobileSearchInput ? mobileSearchInput.value : "")).trim();
@@ -1812,7 +1824,8 @@ URL: {url}
                     const matchMediaType = activeMediaType === ""
                         || (activeMediaType === "media" && itemHasMedia(item))
                         || (activeMediaType === "image" && itemHasImage(item))
-                        || (activeMediaType === "video" && itemHasVideo(item));
+                        || (activeMediaType === "video" && itemHasVideo(item))
+                        || (activeMediaType === "article" && itemHasArticle(item));
                     const rawFieldText = (item.rawFields || [])
                         .map((field) => `${field.key} ${field.value}`)
                         .join(" ");
