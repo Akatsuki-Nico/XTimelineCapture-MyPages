@@ -460,11 +460,12 @@
         const DASHBOARD_PUBLIC_URL = "https://akatsuki-nico.github.io/XTimelineCapture-MyPages/dashboard/index.html";
         const CODEX_REPO_URL = "git@github.com:Akatsuki-Nico/XTimelineCapture.git";
         const AI_APP_URLS = {
-            claude: "claude://",
-            chatgpt: "chatgpt://",
-            gemini: "gemini://",
-            grok: "grok://",
+            claude: "claude://new",
+            chatgpt: "chatgpt://chat/new",
+            gemini: "gemini://new",
+            grok: "grok://chat/new",
         };
+        const MAX_PROMPT_URL_CHARS = 1800;
         let currentTimeline = "すべて";
         let activeMajorCategory = "すべて";
         let activeMiddleCategory = "すべて";
@@ -1298,13 +1299,15 @@ URL: {url}
                 .replace(/\{text\}/g, item.text || "");
         }
 
-        function buildAiUrl(aiKey) {
-            if (aiKey === "claude") return "https://claude.ai/new";
-            if (aiKey === "chatgpt") return "https://chatgpt.com/";
+        function buildAiUrl(aiKey, prompt = "") {
+            const encodedPrompt = encodeURIComponent(prompt || "");
+            const canPrefill = encodedPrompt.length > 0 && encodedPrompt.length <= MAX_PROMPT_URL_CHARS;
+            if (aiKey === "claude") return canPrefill ? `https://claude.ai/new?q=${encodedPrompt}` : "https://claude.ai/new";
+            if (aiKey === "chatgpt") return canPrefill ? `https://chatgpt.com/?q=${encodedPrompt}` : "https://chatgpt.com/?q=";
             if (aiKey === "gemini") return "https://gemini.google.com/app";
             if (aiKey === "grok") return "https://grok.com/";
             if (aiKey === "aistudio") return "https://aistudio.google.com/prompts/new_chat";
-            return "https://www.google.com/search";
+            return canPrefill ? `https://www.google.com/search?q=${encodedPrompt}` : "https://www.google.com/search";
         }
 
         function buildAiUrls(item) {
@@ -1336,8 +1339,9 @@ URL: {url}
             }
             const prompt = buildPrompt(item);
             const copied = await copyPrompt(prompt);
-            showToast(copied ? "プロンプトをコピーしました" : "コピーに失敗しました");
-            openUrlWithAppFallback(AI_APP_URLS[aiKey], buildAiUrl(aiKey));
+            const webUrl = buildAiUrl(aiKey, prompt);
+            showToast(copied ? "新規チャットを開きます。プロンプトはコピー済みです" : "新規チャットを開きます。必要なら手動でコピーしてください");
+            openUrlWithAppFallback(AI_APP_URLS[aiKey], webUrl);
             return false;
         }
 
