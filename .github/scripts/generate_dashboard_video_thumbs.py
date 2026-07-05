@@ -24,6 +24,12 @@ SOURCE_DATA_PATTERN = re.compile(
 )
 
 
+def dumps_for_inline_script(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).replace(
+        "</", "<\\/"
+    )
+
+
 def is_video_url(url: str) -> bool:
     if "video.twimg.com" in url:
         return True
@@ -43,7 +49,7 @@ def extract_source_data(html_path: Path) -> tuple[str, list[dict[str, Any]], re.
 
 
 def write_source_data(html_path: Path, html: str, rows: list[dict[str, Any]]) -> None:
-    encoded = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+    encoded = dumps_for_inline_script(rows)
     replaced = SOURCE_DATA_PATTERN.sub(
         lambda match: f"{match.group(1)}{encoded}{match.group(3)}",
         html,
