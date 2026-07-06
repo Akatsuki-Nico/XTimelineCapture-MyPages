@@ -1365,17 +1365,49 @@
             }
         }
 
-        const DEFAULT_AI_PROMPT = `以下のMarkdown clippingを読み、日本のITプロフェッショナルが理解しやすいように整理してください。
+        const DEFAULT_AI_PROMPT = `以下のMarkdown clippingを読み、まず投稿の内容を正確に把握して、私に分かりやすく教えてください。
 
 【対象のMarkdown clipping】
 {clipping}
 
-【回答してほしいこと】
-・投稿の要点を自然な日本語でまとめる
-・画像URLや動画URLから読み取れる範囲も含めて補足する
-・引用元ポストがある場合は、元ポストとの関係を説明する
-・重要なツール名、リンク、固有名詞、ハッシュタグは残す
-・最後に「使えそうな示唆」を3つ出す`;
+【最初に必ずやること】
+・Markdown内の画像Markdown、動画タグ、画像URL、動画URLを「参照メディア」として最初に再掲してください
+・画像は表示できる場合、実際に見てから内容を説明してください
+・動画は再生または参照できる場合、内容を確認して説明してください。見られない場合も動画URLとして残してください
+・画像や動画が複数ある場合は、1つずつ番号を付けて扱ってください
+
+【第1段階: まず内容を教える】
+・この投稿が何を言っているのかを、自然な日本語で説明してください
+・投稿者が主張していること、紹介しているもの、背景文脈を分けて整理してください
+・画像、動画、引用元ポストがある場合は、それぞれが本文理解にどう関係するか説明してください
+・重要なツール名、リンク、固有名詞、ハッシュタグは残してください
+・私がこの投稿から何を見ればいいかを、実務目線で3つに絞って教えてください
+
+【第2段階: 次に使うファクトチェックプロンプトを出す】
+第1段階の説明のあとに、以下の形式で「この後そのまま貼れるファクトチェック用プロンプト」を出してください。
+
+# あなたの役割
+あなたは、いかなる誤情報も見逃さない、諜報機関レベルの精度を誇るファクトチェッカーです。
+
+# やってほしいこと
+直前のステップで生成された調査結果について、その内容が事実に基づいているか、厳密なファクトチェックを行い、信頼できるソースを添えて結果を報告してください。
+
+# 実行プロセス
+1. 調査対象の情報に含まれる主張やデータを分解します。
+2. それぞれの主張について、信頼性の高い情報源（一次情報源、公的機関、学術論文、主要メディアなど）を複数用いて、裏付けを徹底的に調査します。
+3. 調査結果に基づき、情報の信憑性を以下の3段階の絵文字で評価します。
+4. 各項目について、評価の根拠となった情報源へのリンクと、その情報源のどの部分で確認できるのかを具体的に示してください。
+
+# 出力形式
+## ファクトチェック結果
+
+### 項目1：[調査した主張]
+- **評価:** ✅ 正確 / ⚠️ 要注意 / ❌ 誤情報
+- **ソース1:** [情報源のタイトルとURL]
+  - **確認箇所:** [記事のX段落目、報告書のp.Yなど]
+- **総評:** [なぜその評価になったのかの簡単な解説]
+
+### 項目2：...`;
 
         function getAiPromptTemplate() {
             const saved = localStorage.getItem("aiPromptTemplate");
@@ -1690,13 +1722,14 @@
 
         function renderAiShareButtons(item, extraClass = "") {
             const buttonClass = "flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-[12px] font-black py-2.5 sm:py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[var(--tap-min)] sm:min-h-0";
+            const mdButtonClass = "col-span-2 flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[11px] font-black py-2.5 sm:py-2 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors min-h-[var(--tap-min)] sm:min-h-0";
             const buttons = AI_SHARE_TARGETS.map((target) => `
                 <button type="button" onclick="return openAiWithMarkdown(event, '${target.key}', ${item.originalIndex})" class="${buttonClass}" title="${target.label}にプロンプトを送る">
                     <img src="https://www.google.com/s2/favicons?domain=${target.domain}&sz=64" alt="" class="w-4 h-4 rounded-sm shrink-0">
                     <span class="truncate">${target.label}</span>
                 </button>
             `).join("");
-            return `<div class="ai-send-grid grid grid-cols-2 gap-2 ${extraClass}" aria-label="AIに送る">${buttons}</div>`;
+            return `<div class="ai-send-grid grid grid-cols-2 gap-2 ${extraClass}" aria-label="AIに送る">${buttons}<button type="button" onclick="copyMarkdownClippingFor(${item.originalIndex})" class="${mdButtonClass}" title="プロンプト抜きのMarkdown clippingだけコピー">&#128203; MDコピー</button></div>`;
         }
 
         function renderCommonHeader(item, avatarSize = "w-10 h-10", avatarText = "text-sm") {
@@ -1836,14 +1869,24 @@
             showToast(copied ? "プロンプトをコピーしました" : "コピーに失敗しました");
         };
 
-        window.copyAiShareFor = async (index) => {
+        window.copyPromptForAi = async (index) => {
             const item = rawData[index];
             if (!item) {
                 return;
             }
-            const markdown = buildAiShareText(item);
-            const copied = await copyPrompt(markdown);
-            showToast(copied ? "AI用Markdownをコピーしました" : "コピーに失敗しました");
+            const prompt = buildAiShareText(item);
+            const copied = await copyPrompt(prompt);
+            showToast(copied ? "プロンプトをコピーしました" : "コピーに失敗しました");
+        };
+
+        window.copyMarkdownClippingFor = async (index) => {
+            const item = rawData[index];
+            if (!item) {
+                return;
+            }
+            const clipping = buildMarkdownClipping(item);
+            const copied = await copyPrompt(clipping);
+            showToast(copied ? "Markdown clippingをコピーしました" : "コピーに失敗しました");
         };
 
         function buildFilterChipHtml(label, count, active, onclickAttr) {
