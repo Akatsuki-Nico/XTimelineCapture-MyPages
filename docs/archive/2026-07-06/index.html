@@ -1365,21 +1365,33 @@
             }
         }
 
-        const DEFAULT_AI_PROMPT = `以下のSNSの投稿を読み、日本のITプロフェッショナルが理解しやすいように【自然な日本語に意訳・要約】してください。
+        const DEFAULT_AI_PROMPT = `以下のMarkdown clippingを読み、日本のITプロフェッショナルが理解しやすいように整理してください。
 
-【対象のポスト】
-投稿者: {displayName} (@{userName})
-URL: {url}
-本文:
-{text}
+【対象のMarkdown clipping】
+{clipping}
 
-【回答のルール】
-・単なる直訳ではなく、背景や文脈を補足して要約してください。
-・重要なリンクやツール名、ハッシュタグは残してください。`;
+【回答してほしいこと】
+・投稿の要点を自然な日本語でまとめる
+・画像URLや動画URLから読み取れる範囲も含めて補足する
+・引用元ポストがある場合は、元ポストとの関係を説明する
+・重要なツール名、リンク、固有名詞、ハッシュタグは残す
+・最後に「使えそうな示唆」を3つ出す`;
+
+        function getAiPromptTemplate() {
+            const saved = localStorage.getItem("aiPromptTemplate");
+            if (!saved) return DEFAULT_AI_PROMPT;
+            if (saved.includes("{clipping}")) return saved;
+            return `${saved}
+
+【Markdown clipping】
+{clipping}`;
+        }
 
         function buildPrompt(item) {
-            const template = localStorage.getItem("aiPromptTemplate") || DEFAULT_AI_PROMPT;
+            const template = getAiPromptTemplate();
+            const clipping = buildMarkdownClipping(item);
             return template
+                .replace(/\{clipping\}/g, clipping)
                 .replace(/\{displayName\}/g, item.displayName || "")
                 .replace(/\{userName\}/g, item.userName || "")
                 .replace(/\{url\}/g, item.url || "")
@@ -1537,7 +1549,7 @@ URL: {url}
         }
 
         function buildAiShareText(item) {
-            return buildMarkdownClipping(item);
+            return buildPrompt(item);
         }
 
         function buildAiUrl(aiKey, prompt = "") {
@@ -1579,7 +1591,7 @@ URL: {url}
             const copied = await copyPrompt(markdown);
             const webUrl = buildAiUrl(aiKey, markdown);
             const target = getAiTarget(aiKey);
-            showToast(copied ? `${target.label}を開きます。Markdownはコピー済みです` : `${target.label}を開きます。必要なら手動でコピーしてください`);
+            showToast(copied ? `${target.label}を開きます。プロンプトはコピー済みです` : `${target.label}を開きます。必要なら手動でコピーしてください`);
             openUrlWithAppFallback(AI_APP_URLS[aiKey], webUrl);
             return false;
         }
@@ -1679,7 +1691,7 @@ URL: {url}
         function renderAiShareButtons(item, extraClass = "") {
             const buttonClass = "flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-[12px] font-black py-2.5 sm:py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[var(--tap-min)] sm:min-h-0";
             const buttons = AI_SHARE_TARGETS.map((target) => `
-                <button type="button" onclick="return openAiWithMarkdown(event, '${target.key}', ${item.originalIndex})" class="${buttonClass}" title="${target.label}にMarkdownを送る">
+                <button type="button" onclick="return openAiWithMarkdown(event, '${target.key}', ${item.originalIndex})" class="${buttonClass}" title="${target.label}にプロンプトを送る">
                     <img src="https://www.google.com/s2/favicons?domain=${target.domain}&sz=64" alt="" class="w-4 h-4 rounded-sm shrink-0">
                     <span class="truncate">${target.label}</span>
                 </button>
@@ -2309,7 +2321,7 @@ URL: {url}
     <div class="prompt-dialog bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-xl shadow-2xl w-full max-w-lg mx-4 p-5 sm:p-6">
         <div class="shrink-0">
             <h3 class="text-sm font-bold text-zinc-900 dark:text-zinc-100 mb-3">AI プロンプト テンプレート編集</h3>
-            <p class="text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400 mb-3">変数: <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{displayName}</code> <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{userName}</code> <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{url}</code> <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{text}</code></p>
+            <p class="text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400 mb-3">変数: <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{clipping}</code> <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{displayName}</code> <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{userName}</code> <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{url}</code> <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">{text}</code><br>{clipping} が無い古いテンプレートは、送信時に末尾へMarkdown clippingを追加します。</p>
         </div>
         <textarea id="promptTextarea" rows="12" class="prompt-textarea w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-600 rounded-lg p-3 text-sm text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-400 focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-400 resize-y"></textarea>
         <div class="prompt-actions flex justify-end gap-2 mt-4 shrink-0">
