@@ -459,6 +459,12 @@
             gemini: "gemini://new",
             grok: "grok://chat/new",
         };
+        const AI_SHARE_TARGETS = [
+            { key: "chatgpt", label: "ChatGPT", domain: "chatgpt.com" },
+            { key: "claude", label: "Claude", domain: "claude.ai" },
+            { key: "gemini", label: "Gemini", domain: "gemini.google.com" },
+            { key: "grok", label: "Grok", domain: "grok.com" },
+        ];
         const MAX_PROMPT_URL_CHARS = 1800;
         let currentTimeline = "すべて";
         let activeMajorCategory = "すべて";
@@ -544,6 +550,9 @@
         let isFilterOpen = true;
         const PAGE_SIZE = isMobile ? 40 : 80;
         let visibleCount = PAGE_SIZE;
+        const DASHBOARD_POSITION_KEY = "dashboardPositionState";
+        let pendingDashboardPosition = null;
+        let didRestoreDashboardPosition = false;
 
         /* --- Dark mode button --- */
         if (darkModeBtn) darkModeBtn.addEventListener("click", toggleDarkMode);
@@ -575,6 +584,96 @@
             lastScrollY = y;
         }
         window.addEventListener("scroll", handleScroll, { passive: true });
+
+        function findPositionAnchorCard() {
+            const cards = Array.from(cardsContainer?.querySelectorAll?.(".dashboard-card") || []);
+            if (!cards.length) return null;
+            const viewportCenter = window.innerHeight * 0.48;
+            let bestCard = null;
+            let bestDistance = Number.POSITIVE_INFINITY;
+            for (const card of cards) {
+                if (!card.dataset.postIndex) continue;
+                const rect = card.getBoundingClientRect();
+                if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+                const cardCenter = rect.top + rect.height / 2;
+                const distance = Math.abs(cardCenter - viewportCenter);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestCard = card;
+                }
+            }
+            return bestCard || cards[0] || null;
+        }
+
+        function saveDashboardPosition(reason = "") {
+            try {
+                const anchor = findPositionAnchorCard();
+                const state = {
+                    reason,
+                    scrollY: window.scrollY,
+                    visibleCount,
+                    currentView,
+                    currentSort,
+                    postIndex: anchor?.dataset?.postIndex || "",
+                    anchorTop: anchor ? anchor.getBoundingClientRect().top : 0,
+                    savedAt: Date.now(),
+                };
+                sessionStorage.setItem(DASHBOARD_POSITION_KEY, JSON.stringify(state));
+            } catch (err) {}
+        }
+
+        function readDashboardPosition() {
+            try {
+                const raw = sessionStorage.getItem(DASHBOARD_POSITION_KEY);
+                if (!raw) return null;
+                const state = JSON.parse(raw);
+                if (!state || Date.now() - Number(state.savedAt || 0) > 12 * 60 * 60 * 1000) {
+                    sessionStorage.removeItem(DASHBOARD_POSITION_KEY);
+                    return null;
+                }
+                return state;
+            } catch (err) {
+                return null;
+            }
+        }
+
+        function primeDashboardPositionRestore() {
+            pendingDashboardPosition = readDashboardPosition();
+            if (!pendingDashboardPosition) return;
+            if (Number.isFinite(Number(pendingDashboardPosition.visibleCount))) {
+                visibleCount = Math.max(visibleCount, Number(pendingDashboardPosition.visibleCount));
+            }
+        }
+
+        function findRenderedCardByPostIndex(postIndex) {
+            const target = String(postIndex || "");
+            if (!target) return null;
+            return Array.from(cardsContainer.querySelectorAll(".dashboard-card"))
+                .find((card) => card.dataset.postIndex === target) || null;
+        }
+
+        function scheduleDashboardPositionRestore() {
+            if (!pendingDashboardPosition || didRestoreDashboardPosition) return;
+            didRestoreDashboardPosition = true;
+            requestAnimationFrame(() => {
+                const state = pendingDashboardPosition;
+                const card = findRenderedCardByPostIndex(state.postIndex);
+                if (card) {
+                    const targetY = window.scrollY + card.getBoundingClientRect().top - Number(state.anchorTop || 80);
+                    window.scrollTo({ top: Math.max(0, targetY), behavior: "auto" });
+                } else if (Number.isFinite(Number(state.scrollY))) {
+                    window.scrollTo({ top: Math.max(0, Number(state.scrollY)), behavior: "auto" });
+                }
+                handleScroll();
+            });
+        }
+
+        window.addEventListener("pagehide", () => saveDashboardPosition("pagehide"));
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "hidden") {
+                saveDashboardPosition("hidden");
+            }
+        });
 
         /* --- Skeleton loading --- */
         function showSkeletons(count) {
@@ -808,10 +907,12 @@
         function openExternalMedia(url) {
             const safe = safeUrl(url);
             if (!safe || safe === "#") return;
+            saveDashboardPosition("external-media");
             window.open(safe, "_blank", "noopener,noreferrer");
         }
 
         function openUrlWithAppFallback(appUrl, webUrl) {
+            saveDashboardPosition("ai-app");
             if (!isMobileDevice || !appUrl) {
                 window.open(webUrl, "_blank", "noopener,noreferrer");
                 return;
@@ -877,6 +978,7 @@
                 a.click();
                 URL.revokeObjectURL(a.href);
             } catch {
+                saveDashboardPosition("media-download-fallback");
                 window.open(url, "_blank");
             }
         }
@@ -989,6 +1091,7 @@
                     return;
                 }
             } catch (err) {}
+            saveDashboardPosition("media-share-fallback");
             window.open(url, "_blank", "noopener");
         }
 
@@ -1448,17 +1551,6 @@ URL: {url}
             return canPrefill ? `https://www.google.com/search?q=${encodedPrompt}` : "https://www.google.com/search";
         }
 
-        function buildAiUrls(item) {
-            return {
-                claude: buildAiUrl("claude"),
-                chatgpt: buildAiUrl("chatgpt"),
-                gemini: buildAiUrl("gemini"),
-                grok: buildAiUrl("grok"),
-                aistudio: buildAiUrl("aistudio"),
-                google: buildAiUrl("google"),
-            };
-        }
-
         async function copyPrompt(prompt) {
             if (navigator.clipboard && window.isSecureContext) {
                 try {
@@ -1469,16 +1561,25 @@ URL: {url}
             return fallbackCopyTextToClipboard(prompt);
         }
 
-        async function openAiWithPrompt(event, aiKey, index) {
+        function getAiTarget(aiKey) {
+            return AI_SHARE_TARGETS.find((target) => target.key === aiKey) || {
+                key: aiKey,
+                label: aiKey,
+                domain: "",
+            };
+        }
+
+        async function openAiWithMarkdown(event, aiKey, index) {
             event?.preventDefault();
             const item = rawData[index];
             if (!item) {
                 return false;
             }
-            const prompt = buildPrompt(item);
-            const copied = await copyPrompt(prompt);
-            const webUrl = buildAiUrl(aiKey, prompt);
-            showToast(copied ? "新規チャットを開きます。プロンプトはコピー済みです" : "新規チャットを開きます。必要なら手動でコピーしてください");
+            const markdown = buildAiShareText(item);
+            const copied = await copyPrompt(markdown);
+            const webUrl = buildAiUrl(aiKey, markdown);
+            const target = getAiTarget(aiKey);
+            showToast(copied ? `${target.label}を開きます。Markdownはコピー済みです` : `${target.label}を開きます。必要なら手動でコピーしてください`);
             openUrlWithAppFallback(AI_APP_URLS[aiKey], webUrl);
             return false;
         }
@@ -1575,23 +1676,15 @@ URL: {url}
                 </div>`;
         }
 
-        function renderAiActions(item) {
-            const aiUrls = buildAiUrls(item);
-            const aiLinkClass = "h-9 sm:h-9 min-h-[var(--tap-min)] sm:min-h-0 rounded-md border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-[10px] font-bold hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1.5";
-            return `
-                <div class="ai-grid grid gap-1.5">
-                    <a href="${aiUrls.claude}" target="_blank" rel="noopener noreferrer" onclick="return openAiWithPrompt(event, 'claude', ${item.originalIndex})" class="${aiLinkClass}" title="Claude"><img src="https://www.google.com/s2/favicons?domain=claude.ai&sz=64" alt="Claude" class="w-4 h-4 rounded-sm">Claude</a>
-                    <a href="${aiUrls.chatgpt}" target="_blank" rel="noopener noreferrer" onclick="return openAiWithPrompt(event, 'chatgpt', ${item.originalIndex})" class="${aiLinkClass}" title="ChatGPT"><img src="https://www.google.com/s2/favicons?domain=chatgpt.com&sz=64" alt="ChatGPT" class="w-4 h-4 rounded-sm">ChatGPT</a>
-                    <a href="${aiUrls.gemini}" target="_blank" rel="noopener noreferrer" onclick="return openAiWithPrompt(event, 'gemini', ${item.originalIndex})" class="${aiLinkClass}" title="Gemini"><img src="https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" alt="Gemini" class="w-4 h-4 rounded-sm">Gemini</a>
-                    <a href="${aiUrls.grok}" target="_blank" rel="noopener noreferrer" onclick="return openAiWithPrompt(event, 'grok', ${item.originalIndex})" class="${aiLinkClass}" title="Grok"><img src="https://www.google.com/s2/favicons?domain=grok.com&sz=64" alt="Grok" class="w-4 h-4 rounded-sm">Grok</a>
-                    <a href="${aiUrls.aistudio}" target="_blank" rel="noopener noreferrer" onclick="return openAiWithPrompt(event, 'aistudio', ${item.originalIndex})" class="${aiLinkClass}" title="AI Studio"><img src="https://www.google.com/s2/favicons?domain=aistudio.google.com&sz=64" alt="AI Studio" class="w-4 h-4 rounded-sm">AI Studio</a>
-                    <a href="${aiUrls.google}" target="_blank" rel="noopener noreferrer" onclick="return openAiWithPrompt(event, 'google', ${item.originalIndex})" class="${aiLinkClass}" title="Google"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=64" alt="Google" class="w-4 h-4 rounded-sm">Google</a>
-                </div>`;
-        }
-
-        function renderAiCopyButton(item, extraClass = "") {
-            const copyButtonClass = "flex items-center justify-center gap-1.5 rounded-lg border border-zinc-900 dark:border-zinc-100 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-[12px] font-black py-2.5 sm:py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[var(--tap-min)] sm:min-h-0";
-            return `<button type="button" onclick="copyAiShareFor(${item.originalIndex})" class="${copyButtonClass} ${extraClass}" title="本文・X URL・画像URL・動画URLをMarkdownでコピー">&#128203; AIへコピー</button>`;
+        function renderAiShareButtons(item, extraClass = "") {
+            const buttonClass = "flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 text-[12px] font-black py-2.5 sm:py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[var(--tap-min)] sm:min-h-0";
+            const buttons = AI_SHARE_TARGETS.map((target) => `
+                <button type="button" onclick="return openAiWithMarkdown(event, '${target.key}', ${item.originalIndex})" class="${buttonClass}" title="${target.label}にMarkdownを送る">
+                    <img src="https://www.google.com/s2/favicons?domain=${target.domain}&sz=64" alt="" class="w-4 h-4 rounded-sm shrink-0">
+                    <span class="truncate">${target.label}</span>
+                </button>
+            `).join("");
+            return `<div class="ai-send-grid grid grid-cols-2 gap-2 ${extraClass}" aria-label="AIに送る">${buttons}</div>`;
         }
 
         function renderCommonHeader(item, avatarSize = "w-10 h-10", avatarText = "text-sm") {
@@ -1650,14 +1743,8 @@ URL: {url}
             const safeLink = safeUrl(item.url);
             const text = escapeHtml(item.text || "");
             const tagsHtml = (item.tags || []).map((tag) => `<span class="text-[11px] text-zinc-500 dark:text-zinc-400 mr-2 font-bold">#${escapeHtml(tag)}</span>`).join("");
-            const aiSection = isMobile
-                ? `<details class="border border-zinc-200 dark:border-zinc-700 rounded-lg bg-zinc-50 dark:bg-zinc-800 overflow-hidden">
-                    <summary class="details-summary cursor-pointer px-3 py-2.5 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 min-h-[var(--tap-min)] flex items-center">AIアクション</summary>
-                    <div class="p-2 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">${renderAiActions(item)}</div>
-                   </details>`
-                : renderAiActions(item);
             return `
-                <article class="dashboard-card card-animate bg-white dark:bg-zinc-800 rounded-xl p-4 sm:p-5 border border-zinc-200 dark:border-zinc-700 flex flex-col shadow-sm" role="article" aria-label="Post by ${escapeHtml(item.displayName || 'Unknown')}">
+                <article class="dashboard-card card-animate bg-white dark:bg-zinc-800 rounded-xl p-4 sm:p-5 border border-zinc-200 dark:border-zinc-700 flex flex-col shadow-sm" data-post-index="${item.originalIndex}" role="article" aria-label="Post by ${escapeHtml(item.displayName || 'Unknown')}">
                     ${renderCommonHeader(item)}
                     <div class="mt-3 sm:mt-4 flex-1">
                         <p class="text-[13px] leading-relaxed sm:leading-loose whitespace-pre-wrap break-words text-zinc-800 dark:text-zinc-200">${text}</p>
@@ -1667,11 +1754,10 @@ URL: {url}
                     </div>
                     <div class="mt-2 sm:mt-3 min-h-[1.25rem]">${tagsHtml}</div>
                     <div class="mt-3 sm:mt-4">${renderStatsRow(item)}</div>
-                    <div class="mt-3 sm:mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" class="w-full flex items-center justify-center gap-1.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[12px] font-bold py-2.5 rounded-lg border border-zinc-900 dark:border-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors min-h-[var(--tap-min)] sm:min-h-0">Xで開く</a>
-                        ${renderAiCopyButton(item)}
+                    <div class="mt-3 sm:mt-4">
+                        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" onclick="saveDashboardPosition('x-open')" class="w-full flex items-center justify-center gap-1.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[12px] font-bold py-2.5 rounded-lg border border-zinc-900 dark:border-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors min-h-[var(--tap-min)] sm:min-h-0">Xで開く</a>
                     </div>
-                    <div class="mt-2">${aiSection}</div>
+                    <div class="mt-2">${renderAiShareButtons(item)}</div>
                 </article>`;
         }
 
@@ -1679,14 +1765,8 @@ URL: {url}
             const safeLink = safeUrl(item.url);
             const text = escapeHtml(item.text || "");
             const tagsHtml = (item.tags || []).map((tag) => `<span class="text-[11px] text-zinc-500 dark:text-zinc-400 mr-2 font-bold">#${escapeHtml(tag)}</span>`).join("");
-            const aiSection = isMobile
-                ? `<details class="flex-1 border border-zinc-200 dark:border-zinc-700 rounded-lg bg-zinc-50 dark:bg-zinc-800 overflow-hidden">
-                    <summary class="details-summary cursor-pointer px-3 py-2.5 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 min-h-[var(--tap-min)] flex items-center">AIアクション</summary>
-                    <div class="p-2 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">${renderAiActions(item)}</div>
-                   </details>`
-                : `<div class="flex-1">${renderAiActions(item)}</div>`;
             return `
-                <article class="dashboard-card card-animate bg-white dark:bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-200 dark:border-zinc-700 shadow-sm" role="article" aria-label="Post by ${escapeHtml(item.displayName || 'Unknown')}">
+                <article class="dashboard-card card-animate bg-white dark:bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-200 dark:border-zinc-700 shadow-sm" data-post-index="${item.originalIndex}" role="article" aria-label="Post by ${escapeHtml(item.displayName || 'Unknown')}">
                     ${renderCommonHeader(item)}
                     <div class="mt-2 sm:mt-3">
                         <p class="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-zinc-800 dark:text-zinc-200">${text}</p>
@@ -1696,11 +1776,10 @@ URL: {url}
                     </div>
                     <div class="mt-2 min-h-[1.25rem]">${tagsHtml}</div>
                     <div class="mt-2 sm:mt-3">${renderStatsRow(item)}</div>
-                    <div class="mt-2 sm:mt-3 flex flex-col sm:flex-row gap-2">
-                        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" class="sm:w-40 flex items-center justify-center gap-1.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[12px] font-bold py-2.5 sm:py-2 rounded-lg border border-zinc-900 dark:border-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors min-h-[var(--tap-min)] sm:min-h-0">Xで開く</a>
-                        ${renderAiCopyButton(item, "sm:w-40")}
-                        ${aiSection}
+                    <div class="mt-2 sm:mt-3">
+                        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" onclick="saveDashboardPosition('x-open')" class="w-full flex items-center justify-center gap-1.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[12px] font-bold py-2.5 sm:py-2 rounded-lg border border-zinc-900 dark:border-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors min-h-[var(--tap-min)] sm:min-h-0">Xで開く</a>
                     </div>
+                    <div class="mt-2">${renderAiShareButtons(item)}</div>
                 </article>`;
         }
 
@@ -1708,7 +1787,7 @@ URL: {url}
             const safeLink = safeUrl(item.url);
             const text = escapeHtml(item.text || "");
             return `
-                <article class="dashboard-card card-animate bg-white dark:bg-zinc-800 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700 shadow-sm" role="article" aria-label="Post by ${escapeHtml(item.displayName || 'Unknown')}">
+                <article class="dashboard-card card-animate bg-white dark:bg-zinc-800 rounded-lg p-3 border border-zinc-200 dark:border-zinc-700 shadow-sm" data-post-index="${item.originalIndex}" role="article" aria-label="Post by ${escapeHtml(item.displayName || 'Unknown')}">
                     ${renderCommonHeader(item, "w-8 h-8", "text-xs")}
                     <p class="mt-2 text-[12px] leading-relaxed whitespace-pre-wrap break-words text-zinc-800 dark:text-zinc-200">${text}</p>
                     ${renderQuotedPostIcon(item)}
@@ -1716,14 +1795,10 @@ URL: {url}
                     <div class="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400 font-semibold">
                         LIKE ${formatNumberJP(item.likes)} / REPOST ${formatNumberJP(item.reposts)} / REPLY ${formatNumberJP(item.replies)} / SAVE ${formatNumberJP(item.bookmarks)} / VIEWS ${formatNumberJP(item.views)}
                     </div>
-                    <div class="mt-2 flex flex-col sm:flex-row gap-2">
-                        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" class="sm:w-36 flex items-center justify-center gap-1.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[11px] font-bold py-2.5 sm:py-2 rounded-lg border border-zinc-900 dark:border-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors min-h-[var(--tap-min)] sm:min-h-0">Xで開く</a>
-                        ${renderAiCopyButton(item, "sm:w-36 text-[11px]")}
-                        <details class="flex-1 border border-zinc-200 dark:border-zinc-700 rounded-lg bg-zinc-50 dark:bg-zinc-800 overflow-hidden">
-                            <summary class="details-summary cursor-pointer px-3 py-2.5 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 min-h-[var(--tap-min)] sm:min-h-0 flex items-center">AIアクション</summary>
-                            <div class="p-2 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">${renderAiActions(item)}</div>
-                        </details>
+                    <div class="mt-2">
+                        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" onclick="saveDashboardPosition('x-open')" class="w-full flex items-center justify-center gap-1.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[11px] font-bold py-2.5 sm:py-2 rounded-lg border border-zinc-900 dark:border-zinc-100 hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors min-h-[var(--tap-min)] sm:min-h-0">Xで開く</a>
                     </div>
+                    <div class="mt-2">${renderAiShareButtons(item)}</div>
                 </article>`;
         }
 
@@ -2138,6 +2213,7 @@ URL: {url}
                 cards.forEach((card, i) => {
                     card.style.animationDelay = `${Math.min(i * 30, 300)}ms`;
                 });
+                scheduleDashboardPositionRestore();
             });
         }
 
@@ -2222,6 +2298,7 @@ URL: {url}
         }
 
         loadFilterState();
+        primeDashboardPositionRestore();
         if (sortSelect) sortSelect.value = currentSort;
         if (viewSelect) viewSelect.value = currentView;
         syncDesktopToMobile();
