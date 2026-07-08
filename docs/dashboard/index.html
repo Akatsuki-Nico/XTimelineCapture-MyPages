@@ -253,12 +253,6 @@
                 grid-column: 1 / -1;
                 order: -1;
             }
-            #mobilePromptBtn {
-                bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
-            }
-            #mobileCodexBtn {
-                bottom: calc(7.75rem + env(safe-area-inset-bottom, 0px));
-            }
         }
 
         @media (min-width: 769px) and (max-width: 1024px) {
@@ -316,7 +310,6 @@
                         <option value="compact">コンパクト表示</option>
                     </select>
                     <button id="openPromptBtn" onclick="openPromptModal()" class="whitespace-nowrap px-3 py-2.5 text-[12px] font-bold text-zinc-600 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-lg transition-colors dark:bg-zinc-700 dark:text-zinc-300 dark:border-zinc-600 dark:hover:bg-zinc-600" aria-label="Edit AI prompt template">&#9881; プロンプト</button>
-                    <button onclick="openCodexRequest()" class="whitespace-nowrap px-3 py-2.5 text-[12px] font-bold text-white bg-zinc-900 hover:bg-zinc-700 border border-zinc-900 rounded-lg transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100 dark:hover:bg-zinc-300" aria-label="Ask Codex about this dashboard">Codexに依頼</button>
                 </div>
                 <div class="space-y-3 border-t border-zinc-200 dark:border-zinc-700 pt-3" role="group" aria-label="Filter categories">
                     <div>
@@ -426,6 +419,9 @@
                     <div id="mobileCategoryContainer" class="flex gap-2 flex-wrap" role="group" aria-label="Categories"></div>
                 </div>
                 <div id="mobileActiveFiltersContainer" class="flex flex-wrap gap-2 pt-1" aria-label="Active filters"></div>
+                <div class="pt-3 border-t border-zinc-200 dark:border-zinc-700">
+                    <button onclick="closeBottomSheet();openPromptModal();" class="w-full flex items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-[12px] font-bold text-zinc-700 transition-colors hover:bg-zinc-100 min-h-[var(--tap-min)] dark:bg-zinc-800 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-700" aria-label="Edit AI prompt template">&#9881; プロンプト設定</button>
+                </div>
             </div>
         </div>
     </div>
@@ -445,11 +441,7 @@
         <span id="mobileFilterBadge" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-zinc-900 text-white text-[9px] font-bold rounded-full flex items-center justify-center dark:bg-zinc-100 dark:text-zinc-900"></span>
     </button>
 
-    <button id="quickClearBtn" class="fixed bottom-4 right-4 z-[45] px-3 py-2 rounded-full border border-zinc-300 bg-white/95 backdrop-blur text-zinc-800 text-[12px] font-bold shadow-lg hover:bg-zinc-100 transition-colors min-h-[var(--tap-min)] dark:bg-zinc-800/95 dark:border-zinc-600 dark:text-zinc-300" aria-label="Clear all filters">フィルター解除</button>
-
-    <button id="mobilePromptBtn" class="sm:hidden fixed left-4 z-[45] px-3 py-2 rounded-full border border-zinc-300 bg-white/95 backdrop-blur text-zinc-800 text-[12px] font-bold shadow-lg hover:bg-zinc-100 transition-colors min-h-[var(--tap-min)] dark:bg-zinc-800/95 dark:border-zinc-600 dark:text-zinc-300" onclick="openPromptModal()" aria-label="Edit AI prompt template">&#9881; プロンプト</button>
-
-    <button id="mobileCodexBtn" class="sm:hidden fixed left-[7.6rem] z-[45] px-3 py-2 rounded-full border border-zinc-900 bg-zinc-900/95 backdrop-blur text-white text-[12px] font-bold shadow-lg hover:bg-zinc-800 transition-colors min-h-[var(--tap-min)] dark:bg-zinc-100/95 dark:border-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300" onclick="openCodexRequest()" aria-label="Ask Codex about this dashboard">Codex依頼</button>
+    <button id="quickClearBtn" class="hidden sm:flex fixed bottom-4 right-4 z-[45] items-center justify-center px-3 py-2 rounded-full border border-zinc-300 bg-white/95 backdrop-blur text-zinc-800 text-[12px] font-bold shadow-lg hover:bg-zinc-100 transition-colors min-h-[var(--tap-min)] dark:bg-zinc-800/95 dark:border-zinc-600 dark:text-zinc-300" aria-label="Clear all filters">フィルター解除</button>
 
     <!-- Scroll to top button -->
     <button id="scrollTopBtn" class="fixed bottom-16 right-4 z-[44] w-10 h-10 rounded-full border border-zinc-300 bg-white/95 backdrop-blur text-zinc-600 shadow-md flex items-center justify-center transition-all hover:bg-zinc-100 dark:bg-zinc-800/95 dark:border-zinc-600 dark:text-zinc-400" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Scroll to top">
