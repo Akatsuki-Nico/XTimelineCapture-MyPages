@@ -1,10 +1,11 @@
 {
-  "source_dashboard": "/mnt/gdrive/マイドライブ/idea/Clippings/XTimelineCapture/2026-07-08_X情報収集_win/dashboard/index.html",
-  "synced_at_utc": "2026-07-07 21:28:39Z",
+  "source_dashboard": "/mnt/gdrive/マイドライブ/idea/Clippings/XTimelineCapture/2026-07-09_X情報収集_win/dashboard/index.html",
+  "synced_at_utc": "2026-07-08 21:28:33Z",
   "site_url": "https://akatsuki-nico.github.io/XTimelineCapture-MyPages/",
   "archive_enabled": true,
   "archive_keep_days": 14,
   "archive_dates": [
+    "2026-07-09",
     "2026-07-08",
     "2026-07-07",
     "2026-07-06",
@@ -17,8 +18,7 @@
     "2026-06-29",
     "2026-06-28",
     "2026-06-27",
-    "2026-06-26",
-    "2026-06-25"
+    "2026-06-26"
   ],
   "redact_private_fields": true,
   "redact_field_keys": [
